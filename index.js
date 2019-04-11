@@ -1,6 +1,4 @@
-const url = require('url');
-const http = require('http');
-const _get = require('lodash/get');
+const App = require('./app');
 
 module.exports.templateTags = [
   {
@@ -15,79 +13,46 @@ module.exports.templateTags = [
         help: 'Run "docker ps" to get names for running containers',
       },
       {
-        displayName: 'Port name',
-        type: 'string',
-        placeholder: '80/tcp',
+        displayName: 'Port number',
+        type: 'number',
+        placeholder: '80'
+      },
+      {
+        displayName: 'Port protocol',
+        defaultValue: 'tcp',
+        type: 'enum',
+        options: [
+          { displayName: 'TCP', value: 'tcp' },
+          { displayName: 'UDP', value: 'udp' },
+        ],
       },
       {
         displayName: 'Docker URL',
         type: 'string',
-        placeholder: 'http://localhost:2376',
+        placeholder: 'http://localhost:2376'
       },
     ],
 
-    run(context, containerName, portName, dockerUrl) {
+    run(context, containerName, portNumber, portType, dockerUrl) {
       if (!containerName) {
-        throw new Error('Container name is required for prompt tag');
+        throw new Error('Container name is required');
       }
 
-      if (!portName) {
-        portName = '80/tcp';
+      if (!portNumber || portNumber == 'NaN') {
+        portNumber = '80';
+      }
+
+      if (!portType) {
+        portType = 'tcp';
       }
 
       if (!dockerUrl) {
         dockerUrl = 'http://localhost:2376';
       }
 
-      return getPort(containerName, portName, dockerUrl);
-    },
-  },
+      const app = new App();
+
+      return app.getPort(containerName, portNumber, portType, dockerUrl);
+    }
+  }
 ];
-
-async function getPort(containerName, portName, dockerUrl) {
-  let jsonString;
-  try {
-    jsonString = await downdloadJson(containerName, dockerUrl);
-  } catch (err) {
-    throw new Error(err);
-  }
-
-  let json;
-  try {
-    json = JSON.parse(jsonString);
-  } catch (err) {
-    throw new Error(`Invalid JSON: ${err.message}`);
-  }
-
-  let port = _get(json, `NetworkSettings.Ports.${portName}.0.HostPort`, 0);
-  if (port) {
-    return port;
-  }
-
-  throw new Error(`Could not find ${portName} in docker output.`);
-}
-
-function downdloadJson(containerName, dockerUrl) {
-  return new Promise((resolve, reject) => {
-    let parsedUrl = url.parse(dockerUrl);
-    let options = {
-      protocol: parsedUrl.protocol,
-      host: parsedUrl.hostname,
-      port: parsedUrl.port,
-      path: `/containers/${containerName}/json`,
-      timeout: 1200
-    };
-
-    http.get(options, (response) => {
-      if (response.statusCode < 200 || response.statusCode > 299) {
-        reject(new Error('Failed to download, status code: ' + response.statusCode));
-      }
-
-      const body = [];
-      response.on('data', (chunk) => body.push(chunk));
-      response.on('end', () => resolve(body.join('')));
-    }).on('error', () => {
-      reject('Could not download json');
-    });
-  });
-}
